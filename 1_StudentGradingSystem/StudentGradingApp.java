@@ -58,6 +58,8 @@ import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
  * Enum representing letter grades with grade points and score ranges.
+ * Implements immutable fields for grade points, minimum/maximum percentage boundaries,
+ * and performance descriptions.
  */
 enum Grade {
     A_PLUS("A+", 4.0, 90.0, 100.0, "Outstanding Performance"),
