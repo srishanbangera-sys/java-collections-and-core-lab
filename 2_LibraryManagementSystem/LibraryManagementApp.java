@@ -90,6 +90,10 @@ class BorrowRequest {
 // LIBRARY SERVICE DEMONSTRATING COLLECTIONS
 // ==========================================
 
+/**
+ * Service demonstrating multiple components of the Java Collections Framework:
+ * ArrayList, HashMap, HashSet, LinkedList (as Queue), and TreeSet.
+ */
 class LibraryManagerService {
 
     // 1. ArrayList: Dynamic sequence for book catalog
