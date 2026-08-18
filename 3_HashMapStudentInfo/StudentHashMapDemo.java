@@ -6,6 +6,10 @@ import java.util.*;
  * Project 3: HashMap Student Information System (Console Application)
  * Demonstrates storing and managing Student records in a HashMap using Roll Numbers as Keys.
  */
+/**
+ * Student model for HashMap key-value mapping.
+ * Uses integer rollNumber as unique lookup key.
+ */
 class Student {
     private int rollNumber;
     private String name;
