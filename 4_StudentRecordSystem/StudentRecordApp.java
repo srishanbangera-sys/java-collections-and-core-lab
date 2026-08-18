@@ -232,6 +232,9 @@ class StudentRecordService {
 // 3. HTTP SERVER & API
 // ==========================================
 
+/**
+ * Main application entry point for Student Record System embedded HttpServer.
+ */
 public class StudentRecordApp {
     private static final int PORT = 8084;
     private static final StudentRecordService service = new StudentRecordService();
