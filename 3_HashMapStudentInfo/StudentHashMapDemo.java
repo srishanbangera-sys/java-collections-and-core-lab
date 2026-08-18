@@ -43,6 +43,9 @@ class Student {
 
 public class StudentHashMapDemo {
 
+    /**
+     * Executes HashMap operations: put, get, putIfAbsent, getOrDefault, computeIfPresent, keySet, entrySet.
+     */
     public static void main(String[] args) {
         System.out.println("==========================================================================================");
         System.out.println("                   DEMONSTRATION OF HASHMAP IN JAVA (STUDENT INFO)");
