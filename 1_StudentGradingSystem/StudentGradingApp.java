@@ -177,6 +177,7 @@ class GradeCalculatorService {
 
     /**
      * Demonstrates Autoboxing and Unboxing in mathematical calculations.
+     * Unboxes Double and Integer wrappers during arithmetic operations and autoboxes results.
      */
     @AuditLog(action = "GPA_COMPUTATION_AUTOBOXED")
     public static Map<String, Object> calculateSummary(List<StudentGradeRecord> records) {
