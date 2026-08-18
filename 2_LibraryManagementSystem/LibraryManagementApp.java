@@ -16,6 +16,10 @@ import java.util.concurrent.CopyOnWriteArrayList;
 // MODEL CLASSES
 // ==========================================
 
+/**
+ * Represents a Book entity in the Library Management System.
+ * Implements Comparable interface to support sorted views in TreeSet collections.
+ */
 class Book implements Comparable<Book> {
     private String isbn;
     private String title;
