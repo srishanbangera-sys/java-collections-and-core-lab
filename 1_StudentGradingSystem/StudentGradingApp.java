@@ -23,6 +23,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
  * Custom Runtime Annotation to document Course metadata.
+ * Retained at runtime for Reflection inspection.
  */
 @Retention(RetentionPolicy.RUNTIME)
 @Target({ElementType.TYPE, ElementType.METHOD})
