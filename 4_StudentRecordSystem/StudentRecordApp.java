@@ -16,6 +16,10 @@ import java.util.concurrent.CopyOnWriteArrayList;
 // 1. MODEL CLASSES
 // ==========================================
 
+/**
+ * Represents a Student Record entity storing marks, calculated percentages, and grades.
+ * Implements Comparable interface to support dynamic sorting by total marks.
+ */
 class StudentRecord implements Comparable<StudentRecord> {
     private int rollNo;
     private String name;
