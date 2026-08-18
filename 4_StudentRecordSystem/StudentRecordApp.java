@@ -125,6 +125,9 @@ class ActionLog {
 // 2. RECORD SYSTEM SERVICE (COLLECTIONS)
 // ==========================================
 
+/**
+ * Service managing Student Records using ArrayList, HashMap, ArrayDeque (Stack), and TreeSet.
+ */
 class StudentRecordService {
 
     // 1. ArrayList: Dynamic list of active student records
