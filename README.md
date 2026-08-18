@@ -6,6 +6,22 @@ This repository contains four separate Java projects demonstrating core Java con
 
 ## 📁 Project Overview
 
+### 🛠️ Java Collections & Concepts Mapping
+
+| Collection / Concept | Data Structure / Feature | Used In Module | Purpose / Real-World Use Case |
+| :--- | :--- | :--- | :--- |
+| `List` / `ArrayList` | Dynamic Array | Library & Student Record | Sequential catalog storage & record listing |
+| `Map` / `HashMap` | Hash Table | All Modules | O(1) Instant key-based lookup by ISBN, ID, or Roll No |
+| `Set` / `HashSet` | Unique Hash Bucket | Library System | Maintaining distinct genre lists |
+| `SortedSet` / `TreeSet` | Red-Black Tree | Library & Student Record | Sorted catalog by Title & Leaderboard by Total Marks |
+| `Queue` / `LinkedList` | FIFO Queue | Library System | Waitlist reservation processing |
+| `Deque` / `ArrayDeque` | LIFO Stack | Student Record | Operation undo history & audit trail |
+| `Enum` | Enumeration | Student Grading | Letter grade definitions, boundaries & GPA points |
+| `Annotations & Reflection` | Meta-programming | Student Grading | Dynamic runtime inspection of `@CourseInfo` & `@GradePolicy` |
+| `Autoboxing / Unboxing` | Wrapper Conversion | Student Grading | Seamless primitive-wrapper conversions in calculations |
+
+---
+
 ### 1. Student Grading System (`1_StudentGradingSystem/`)
 - **Key Concepts**: 
   - **Enumerations (`Enum`)**: `Grade` (A+, A, B, C, D, F with points/ranges) & `AcademicStanding`.
