@@ -44,6 +44,10 @@ class Book implements Comparable<Book> {
     public int getYear() { return year; }
     public boolean isAvailable() { return available; }
     public void setAvailable(boolean available) { this.available = available; }
+    public void setTitle(String title) { this.title = title; }
+    public void setAuthor(String author) { this.author = author; }
+    public void setGenre(String genre) { this.genre = genre; }
+    public void setYear(int year) { this.year = year; }
 
     // Implement Comparable interface for TreeSet ordering by Title
     @Override
@@ -230,6 +234,47 @@ class LibraryManagerService {
         return res;
     }
 
+    /**
+     * Delete Book from catalog, HashMap, TreeSet, and Queue, updating HashSet genres.
+     */
+    public synchronized boolean deleteBook(String isbn) {
+        Book book = isbnMap.remove(isbn);
+        if (book == null) return false;
+
+        catalogList.remove(book);
+        sortedCatalogTree.remove(book);
+        borrowQueue.removeIf(req -> req.getIsbn().equals(isbn));
+
+        rebuildGenreSet();
+        return true;
+    }
+
+    /**
+     * Update Book details maintaining TreeSet ordering and HashSet genres.
+     */
+    public synchronized boolean updateBook(String isbn, String title, String author, String genre, int year) {
+        Book book = isbnMap.get(isbn);
+        if (book == null) return false;
+
+        sortedCatalogTree.remove(book);
+
+        book.setTitle(title);
+        book.setAuthor(author);
+        book.setGenre(genre);
+        book.setYear(year);
+
+        sortedCatalogTree.add(book);
+        rebuildGenreSet();
+        return true;
+    }
+
+    private void rebuildGenreSet() {
+        genreSet.clear();
+        for (Book b : catalogList) {
+            genreSet.add(b.getGenre());
+        }
+    }
+
     // Getters for Collections UI inspection
     public List<Book> getCatalogList() { return catalogList; }
     public Map<String, Book> getIsbnMap() { return isbnMap; }
@@ -329,6 +374,43 @@ public class LibraryManagementApp {
                 resp.put("message", added ? "Book added to ArrayList, HashMap, HashSet & TreeSet!" : "Book with this ISBN already exists in HashMap!");
 
                 sendJsonResponse(exchange, added ? 201 : 400, toJson(resp));
+            } 
+            else if (method.equalsIgnoreCase("PUT")) {
+                String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+                Map<String, String> params = parseJsonOrForm(body);
+
+                String isbn = params.get("isbn");
+                String title = params.get("title");
+                String author = params.get("author");
+                String genre = params.get("genre");
+                int year = Integer.parseInt(params.getOrDefault("year", "2024"));
+
+                boolean updated = libraryService.updateBook(isbn, title, author, genre, year);
+
+                Map<String, Object> resp = new HashMap<>();
+                resp.put("success", updated);
+                resp.put("message", updated ? "Book updated successfully in HashMap & TreeSet!" : "Book not found!");
+
+                sendJsonResponse(exchange, updated ? 200 : 404, toJson(resp));
+            } 
+            else if (method.equalsIgnoreCase("DELETE")) {
+                String query = exchange.getRequestURI().getQuery();
+                String isbn = getQueryParam(query, "isbn");
+                if (isbn == null) {
+                    String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+                    Map<String, String> params = parseJsonOrForm(body);
+                    isbn = params.get("isbn");
+                }
+
+                if (isbn != null) {
+                    boolean deleted = libraryService.deleteBook(isbn);
+                    Map<String, Object> resp = new HashMap<>();
+                    resp.put("success", deleted);
+                    resp.put("message", deleted ? "Book deleted from ArrayList, HashMap, HashSet & TreeSet!" : "Book not found!");
+                    sendJsonResponse(exchange, deleted ? 200 : 404, toJson(resp));
+                } else {
+                    sendResponse(exchange, 400, "Missing isbn parameter");
+                }
             } else {
                 sendResponse(exchange, 405, "Method Not Allowed");
             }
@@ -619,20 +701,14 @@ public class LibraryManagementApp {
                 .pill-avail { background: rgba(16, 185, 129, 0.2); color: #10b981; border: 1px solid #10b981; padding: 0.25rem 0.6rem; border-radius: 999px; font-size: 0.75rem; font-weight: 700; }
                 .pill-issued { background: rgba(239, 68, 68, 0.2); color: #ef4444; border: 1px solid #ef4444; padding: 0.25rem 0.6rem; border-radius: 999px; font-size: 0.75rem; font-weight: 700; }
 
-                .action-btn {
-                    padding: 0.4rem 0.8rem; font-size: 0.8rem; border-radius: 6px; border: none; cursor: pointer; font-weight: 600;
-                }
-                .btn-borrow { background: var(--accent-emerald); color: #090d16; }
-                .btn-return { background: var(--accent-cyan); color: #090d16; }
-
                 .modal {
                     display: none; position: fixed; top:0; left:0; width:100%; height:100%;
                     background: rgba(0,0,0,0.7); backdrop-filter: blur(4px);
-                    justify-content: center; align-items: center; z-index: 1000;
+                    justify-content: center; align-items: center; z-index: 100;
                 }
                 .modal-content {
                     background: var(--card-bg); border: 1px solid var(--border-color);
-                    padding: 2rem; border-radius: 16px; width: 90%; max-width: 450px;
+                    border-radius: 12px; padding: 1.5rem; width: 90%; max-width: 450px;
                 }
 
                 .genre-tag {
@@ -645,26 +721,24 @@ public class LibraryManagementApp {
             <div class="container">
                 <header>
                     <h1>📚 Library Management System</h1>
-                    <p>Demonstrating Java Collections Framework (ArrayList, HashMap, HashSet, TreeSet & Queue/LinkedList)</p>
+                    <p>Comprehensive Java Collections Framework Demonstration (ArrayList, HashMap, HashSet, TreeSet, Queue)</p>
                 </header>
 
-                <!-- Collections Framework Breakdown Banner -->
-                <div class="collections-bar" id="statsBar">
-                    <!-- Dynamic stats -->
+                <div class="stats-bar" id="statsBar">
+                    <!-- Dynamic Collections Stats -->
                 </div>
 
                 <div class="dashboard-grid">
-                    <!-- Left Sidebar: Add Book & Collections Summary -->
                     <div>
                         <div class="card" style="margin-bottom: 1.5rem;">
-                            <div class="card-title">📖 Add New Book</div>
+                            <div class="card-title">➕ Add New Book</div>
                             <form id="addBookForm">
                                 <div class="form-group">
-                                    <label>ISBN (Key in HashMap)</label>
+                                    <label>ISBN (Unique HashMap Key)</label>
                                     <input type="text" id="isbn" placeholder="978-0134685991" required>
                                 </div>
                                 <div class="form-group">
-                                    <label>Book Title (Sorted in TreeSet)</label>
+                                    <label>Book Title (TreeSet Sorted Field)</label>
                                     <input type="text" id="title" placeholder="Java Performance" required>
                                 </div>
                                 <div class="form-group">
@@ -689,7 +763,6 @@ public class LibraryManagementApp {
                         </div>
                     </div>
 
-                    <!-- Right Panel: Books Table & Waitlist Queue -->
                     <div>
                         <div class="card" style="margin-bottom: 1.5rem;">
                             <div class="card-title">📚 Catalog (ArrayList + HashMap Indexing)</div>
@@ -703,20 +776,16 @@ public class LibraryManagementApp {
                                         <th>Author & Genre</th>
                                         <th>Year</th>
                                         <th>Status</th>
-                                        <th>Action</th>
+                                        <th>Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody id="booksTable">
-                                    <!-- Dynamic rows -->
                                 </tbody>
                             </table>
                         </div>
 
                         <div class="card">
                             <div class="card-title">⏳ Active Waitlist Queue (LinkedList / FIFO Queue)</div>
-                            <p style="font-size:0.85rem; color:var(--text-muted); margin-bottom:1rem;">
-                                Requests queued when borrowing unavailable books. Auto-fulfilled upon return.
-                            </p>
                             <table style="margin-top:0;">
                                 <thead>
                                     <tr>
@@ -726,16 +795,13 @@ public class LibraryManagementApp {
                                     </tr>
                                 </thead>
                                 <tbody id="queueTable">
-                                    <!-- Dynamic Queue -->
                                 </tbody>
                             </table>
                         </div>
                     </div>
-
                 </div>
             </div>
 
-            <!-- Borrow Modal -->
             <div class="modal" id="borrowModal">
                 <div class="modal-content">
                     <h3 style="margin-bottom: 1rem;">Borrow Book</h3>
@@ -751,15 +817,45 @@ public class LibraryManagementApp {
                 </div>
             </div>
 
+            <div class="modal" id="editBookModal">
+                <div class="modal-content">
+                    <h3 style="margin-bottom: 1rem;">✏️ Edit Book Details</h3>
+                    <form id="editBookForm">
+                        <input type="hidden" id="editIsbn">
+                        <div class="form-group">
+                            <label>Book Title</label>
+                            <input type="text" id="editTitle" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Author</label>
+                            <input type="text" id="editAuthor" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Genre</label>
+                            <input type="text" id="editGenre" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Publication Year</label>
+                            <input type="number" id="editYear" required>
+                        </div>
+                        <div style="display:flex; gap:1rem; margin-top:1.5rem;">
+                            <button type="submit" class="btn">Update Book</button>
+                            <button type="button" class="btn" style="background:#334155; color:white;" onclick="closeEditModal()">Cancel</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
             <script>
                 let currentBorrowIsbn = '';
+                let cachedBooks = [];
 
                 async function loadBooks() {
                     const q = document.getElementById('searchInput').value;
                     const res = await fetch(`/api/books?q=${encodeURIComponent(q)}`);
                     const data = await res.json();
+                    cachedBooks = data.books || [];
 
-                    // Render Stats Bar
                     const stats = data.stats;
                     const statsBar = document.getElementById('statsBar');
                     statsBar.innerHTML = Object.entries(stats).map(([k, v]) => `
@@ -770,96 +866,86 @@ public class LibraryManagementApp {
                         </div>
                     `).join('');
 
-                    // Render Books Table
                     const tbody = document.getElementById('booksTable');
-                    tbody.innerHTML = data.books.map(b => `
+                    tbody.innerHTML = cachedBooks.map(b => `
                         <tr>
-                            <td>
-                                <strong>${b.title}</strong><br>
-                                <span style="font-size:0.75rem; color:var(--text-muted);">${b.isbn}</span>
-                            </td>
+                            <td><strong>${b.title}</strong><br><span style="font-size:0.75rem; color:var(--text-muted);">${b.isbn}</span></td>
                             <td>${b.author}<br><span style="font-size:0.8rem; color:var(--accent-cyan);">${b.genre}</span></td>
                             <td>${b.year}</td>
-                            <td>
-                                ${b.available ? '<span class="pill-avail">Available</span>' : '<span class="pill-issued">Borrowed</span>'}
-                            </td>
+                            <td>${b.available ? '<span class="pill-avail">Available</span>' : '<span class="pill-issued">Borrowed</span>'}</td>
                             <td>
                                 ${b.available ? 
                                     `<button class="action-btn btn-borrow" onclick="openBorrowModal('${b.isbn}')">Borrow</button>` :
                                     `<button class="action-btn btn-return" onclick="returnBook('${b.isbn}')">Return</button>`
                                 }
+                                <button class="action-btn btn-edit" onclick="openEditBookModal('${b.isbn}')">Edit</button>
+                                <button class="action-btn btn-danger" onclick="deleteBook('${b.isbn}')">Delete</button>
                             </td>
                         </tr>
                     `).join('');
 
-                    // Render Genres
                     const genresDiv = document.getElementById('genresList');
                     genresDiv.innerHTML = data.genres.map(g => `<span class="genre-tag">${g}</span>`).join('');
-
                     loadQueue();
                 }
 
                 async function loadQueue() {
                     const res = await fetch('/api/collections');
                     const data = await res.json();
-                    
                     const tbody = document.getElementById('queueTable');
-                    if (data.waitlistQueue.length === 0) {
-                        tbody.innerHTML = '<tr><td colspan="3" style="color:var(--text-muted); text-align:center;">Queue is empty. No pending borrow requests.</td></tr>';
-                    } else {
-                        tbody.innerHTML = data.waitlistQueue.map(q => `
-                            <tr>
-                                <td><code>${q.requestId}</code></td>
-                                <td>${q.bookTitle}</td>
-                                <td><strong>${q.borrower}</strong></td>
-                            </tr>
-                        `).join('');
-                    }
+                    tbody.innerHTML = data.waitlistQueue.length === 0 ? '<tr><td colspan="3" style="color:var(--text-muted); text-align:center;">Queue is empty.</td></tr>' : data.waitlistQueue.map(q => `<tr><td><code>${q.requestId}</code></td><td>${q.bookTitle}</td><td><strong>${q.borrower}</strong></td></tr>`).join('');
                 }
 
                 document.getElementById('addBookForm').addEventListener('submit', async (e) => {
                     e.preventDefault();
                     const payload = {
-                        isbn: document.getElementById('isbn').value,
-                        title: document.getElementById('title').value,
-                        author: document.getElementById('author').value,
-                        genre: document.getElementById('genre').value,
+                        isbn: document.getElementById('isbn').value, title: document.getElementById('title').value,
+                        author: document.getElementById('author').value, genre: document.getElementById('genre').value,
                         year: document.getElementById('year').value
                     };
-
-                    const res = await fetch('/api/books', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(payload)
-                    });
-
+                    const res = await fetch('/api/books', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
                     const data = await res.json();
                     alert(data.message);
-                    if (data.success) {
-                        document.getElementById('addBookForm').reset();
-                        loadBooks();
-                    }
+                    if (data.success) { document.getElementById('addBookForm').reset(); loadBooks(); }
                 });
 
-                function openBorrowModal(isbn) {
-                    currentBorrowIsbn = isbn;
-                    document.getElementById('modalIsbn').value = isbn;
-                    document.getElementById('borrowModal').style.display = 'flex';
-                }
+                function openBorrowModal(isbn) { currentBorrowIsbn = isbn; document.getElementById('modalIsbn').value = isbn; document.getElementById('borrowModal').style.display = 'flex'; }
+                function closeModal() { document.getElementById('borrowModal').style.display = 'none'; }
 
-                function closeModal() {
-                    document.getElementById('borrowModal').style.display = 'none';
+                function openEditBookModal(isbn) {
+                    const book = cachedBooks.find(b => b.isbn === isbn);
+                    if (!book) return;
+                    document.getElementById('editIsbn').value = book.isbn;
+                    document.getElementById('editTitle').value = book.title;
+                    document.getElementById('editAuthor').value = book.author;
+                    document.getElementById('editGenre').value = book.genre;
+                    document.getElementById('editYear').value = book.year;
+                    document.getElementById('editBookModal').style.display = 'flex';
+                }
+                function closeEditModal() { document.getElementById('editBookModal').style.display = 'none'; }
+
+                document.getElementById('editBookForm').addEventListener('submit', async (e) => {
+                    e.preventDefault();
+                    const payload = { isbn: document.getElementById('editIsbn').value, title: document.getElementById('editTitle').value, author: document.getElementById('editAuthor').value, genre: document.getElementById('editGenre').value, year: document.getElementById('editYear').value };
+                    const res = await fetch('/api/books', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+                    const data = await res.json();
+                    alert(data.message);
+                    closeEditModal();
+                    loadBooks();
+                });
+
+                async function deleteBook(isbn) {
+                    if (!confirm('Are you sure you want to delete book with ISBN ' + isbn + '?')) return;
+                    const res = await fetch('/api/books?isbn=' + encodeURIComponent(isbn), { method: 'DELETE' });
+                    const data = await res.json();
+                    alert(data.message);
+                    loadBooks();
                 }
 
                 async function submitBorrow() {
                     const borrower = document.getElementById('modalBorrower').value;
                     if (!borrower) return alert('Please enter borrower name');
-
-                    const res = await fetch('/api/borrow', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ isbn: currentBorrowIsbn, borrower })
-                    });
+                    const res = await fetch('/api/borrow', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ isbn: currentBorrowIsbn, borrower }) });
                     const data = await res.json();
                     alert(data.message);
                     closeModal();
@@ -867,11 +953,7 @@ public class LibraryManagementApp {
                 }
 
                 async function returnBook(isbn) {
-                    const res = await fetch('/api/return', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ isbn })
-                    });
+                    const res = await fetch('/api/return', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ isbn }) });
                     const data = await res.json();
                     alert(data.message);
                     loadBooks();

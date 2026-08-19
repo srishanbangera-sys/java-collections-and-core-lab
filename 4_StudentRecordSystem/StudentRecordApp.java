@@ -182,6 +182,38 @@ class StudentRecordService {
         return true;
     }
 
+    public synchronized boolean updateRecord(int rollNo, String name, String department, double mathMarks, double scienceMarks, double englishMarks, boolean trackUndo) {
+        StudentRecord existing = rollMap.get(rollNo);
+        if (existing == null) return false;
+
+        StudentRecord previousState = new StudentRecord(
+            existing.getRollNo(),
+            existing.getName(),
+            existing.getDepartment(),
+            existing.getMathMarks(),
+            existing.getScienceMarks(),
+            existing.getEnglishMarks()
+        );
+
+        leaderboardTree.remove(existing);
+
+        existing.setName(name);
+        existing.setDepartment(department);
+        existing.setMarks(mathMarks, scienceMarks, englishMarks);
+
+        leaderboardTree.add(existing);
+
+        if (trackUndo) {
+            undoStack.push(new ActionLog(
+                ActionLog.ActionType.UPDATE,
+                existing,
+                previousState,
+                "Updated student: " + existing.getName() + " (Roll " + rollNo + ")"
+            ));
+        }
+        return true;
+    }
+
     /**
      * Demonstrates ArrayDeque LIFO Stack POP operation to Undo last user action.
      */
@@ -204,6 +236,13 @@ class StudentRecordService {
             // Undo a DELETE action -> RE-ADD record without tracking undo
             addRecord(lastAction.getRecord(), false);
             res.put("message", "Undo successful: Restored deleted student " + lastAction.getRecord().getName());
+        } else if (lastAction.getType() == ActionLog.ActionType.UPDATE) {
+            // Undo an UPDATE action -> Revert record fields to previous state
+            StudentRecord prev = lastAction.getPreviousState();
+            if (prev != null) {
+                updateRecord(prev.getRollNo(), prev.getName(), prev.getDepartment(), prev.getMathMarks(), prev.getScienceMarks(), prev.getEnglishMarks(), false);
+                res.put("message", "Undo successful: Reverted updates for " + prev.getName() + " (Roll " + prev.getRollNo() + ")");
+            }
         }
 
         res.put("success", true);
@@ -330,6 +369,25 @@ public class StudentRecordApp {
                 } else {
                     sendResponse(exchange, 400, "Missing rollNo parameter");
                 }
+            } 
+            else if (method.equalsIgnoreCase("PUT")) {
+                String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+                Map<String, String> p = parseJsonOrForm(body);
+
+                int roll = Integer.parseInt(p.get("rollNo"));
+                String name = p.get("name");
+                String dept = p.get("department");
+                double math = Double.parseDouble(p.get("mathMarks"));
+                double sci = Double.parseDouble(p.get("scienceMarks"));
+                double eng = Double.parseDouble(p.get("englishMarks"));
+
+                boolean updated = service.updateRecord(roll, name, dept, math, sci, eng, true);
+
+                Map<String, Object> resp = new HashMap<>();
+                resp.put("success", updated);
+                resp.put("message", updated ? "Record updated & pushed to ArrayDeque Undo Stack!" : "Record not found!");
+
+                sendJsonResponse(exchange, updated ? 200 : 404, toJson(resp));
             } else {
                 sendResponse(exchange, 405, "Method Not Allowed");
             }
@@ -668,7 +726,7 @@ public class StudentRecordApp {
                                         <th>Marks (M/S/E)</th>
                                         <th>Total & %</th>
                                         <th>Grade</th>
-                                        <th>Action</th>
+                                        <th>Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody id="recordsTable">
@@ -702,10 +760,47 @@ public class StudentRecordApp {
                 </div>
             </div>
 
+            <!-- Edit Modal -->
+            <div id="editModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.7); backdrop-filter:blur(4px); justify-content:center; align-items:center; z-index:1000;">
+                <div style="background:var(--card-bg); border:1px solid var(--border-color); border-radius:16px; padding:1.5rem; width:90%; max-width:450px;">
+                    <div class="card-title">✏️ Edit Student Record</div>
+                    <form id="editRecordForm">
+                        <input type="hidden" id="editRollNo">
+                        <div class="form-group">
+                            <label>Student Name</label>
+                            <input type="text" id="editName" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Department</label>
+                            <input type="text" id="editDepartment" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Math Marks</label>
+                            <input type="number" id="editMathMarks" min="0" max="100" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Science Marks</label>
+                            <input type="number" id="editScienceMarks" min="0" max="100" required>
+                        </div>
+                        <div class="form-group">
+                            <label>English Marks</label>
+                            <input type="number" id="editEnglishMarks" min="0" max="100" required>
+                        </div>
+                        <div style="display:flex; gap:0.5rem; margin-top:1rem;">
+                            <button type="submit" class="btn">Update Record</button>
+                            <button type="button" class="btn" style="background:#475569;" onclick="closeEditModal()">Cancel</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
             <script>
+                let cachedRecords = [];
+
                 async function loadData() {
                     const res = await fetch('/api/records');
                     const data = await res.json();
+                    cachedRecords = data.records || [];
 
                     // Stats Grid
                     const stats = data.stats;
@@ -720,7 +815,7 @@ public class StudentRecordApp {
 
                     // Records Table
                     const tbody = document.getElementById('recordsTable');
-                    tbody.innerHTML = data.records.map(r => `
+                    tbody.innerHTML = cachedRecords.map(r => `
                         <tr>
                             <td>
                                 <strong>${r.name}</strong><br>
@@ -733,7 +828,9 @@ public class StudentRecordApp {
                                 <span class="grade-badge grade-${r.grade.replace('+', '_PLUS')}">${r.grade}</span>
                             </td>
                             <td>
-                                <button style="background:#ef4444; color:white; border:none; padding:0.3rem 0.6rem; border-radius:4px; cursor:pointer;"
+                                <button style="background:rgba(59,130,246,0.2); color:#3b82f6; border:1px solid #3b82f6; padding:0.3rem 0.6rem; border-radius:4px; cursor:pointer; font-weight:600; margin-right:0.25rem;"
+                                        onclick="openEditModal(${r.rollNo})">Edit</button>
+                                <button style="background:rgba(239,68,68,0.2); color:#ef4444; border:1px solid #ef4444; padding:0.3rem 0.6rem; border-radius:4px; cursor:pointer; font-weight:600;"
                                         onclick="deleteRecord(${r.rollNo})">Delete</button>
                             </td>
                         </tr>
@@ -783,6 +880,47 @@ public class StudentRecordApp {
                     alert(data.message);
                     if (data.success) {
                         document.getElementById('recordForm').reset();
+                        loadData();
+                    }
+                });
+
+                function openEditModal(rollNo) {
+                    const r = cachedRecords.find(item => item.rollNo === rollNo);
+                    if (!r) return;
+                    document.getElementById('editRollNo').value = r.rollNo;
+                    document.getElementById('editName').value = r.name;
+                    document.getElementById('editDepartment').value = r.department;
+                    document.getElementById('editMathMarks').value = r.mathMarks;
+                    document.getElementById('editScienceMarks').value = r.scienceMarks;
+                    document.getElementById('editEnglishMarks').value = r.englishMarks;
+                    document.getElementById('editModal').style.display = 'flex';
+                }
+
+                function closeEditModal() {
+                    document.getElementById('editModal').style.display = 'none';
+                }
+
+                document.getElementById('editRecordForm').addEventListener('submit', async (e) => {
+                    e.preventDefault();
+                    const payload = {
+                        rollNo: document.getElementById('editRollNo').value,
+                        name: document.getElementById('editName').value,
+                        department: document.getElementById('editDepartment').value,
+                        mathMarks: document.getElementById('editMathMarks').value,
+                        scienceMarks: document.getElementById('editScienceMarks').value,
+                        englishMarks: document.getElementById('editEnglishMarks').value
+                    };
+
+                    const res = await fetch('/api/records', {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+
+                    const data = await res.json();
+                    alert(data.message);
+                    if (data.success) {
+                        closeEditModal();
                         loadData();
                     }
                 });

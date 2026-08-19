@@ -169,6 +169,15 @@ class StudentGradeRecord {
     public Integer getCredits() { return credits; }
     public Grade getGrade() { return grade; }
     public Double getGradePoint() { return gradePoint; }
+
+    public void setName(String name) { this.name = name; }
+    public void setCourseName(String courseName) { this.courseName = courseName; }
+    public void setRawScore(Double rawScore) {
+        this.rawScore = rawScore;
+        this.grade = Grade.fromScore(rawScore);
+        this.gradePoint = this.grade.getGradePoint();
+    }
+    public void setCredits(Integer credits) { this.credits = credits; }
 }
 
 @CourseInfo(courseCode = "CS302", department = "Software Engineering", credits = 4)
@@ -361,6 +370,56 @@ public class StudentGradingApp {
                 resp.put("success", true);
                 resp.put("message", "Student record added successfully!");
                 sendJsonResponse(exchange, 201, toJson(resp));
+            } 
+            else if (method.equalsIgnoreCase("PUT")) {
+                String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+                Map<String, String> params = parseFormOrJson(body);
+                String id = params.get("id");
+                
+                StudentGradeRecord found = null;
+                for (StudentGradeRecord r : records) {
+                    if (r.getId().equals(id)) {
+                        found = r;
+                        break;
+                    }
+                }
+                
+                if (found != null) {
+                    if (params.containsKey("name")) found.setName(params.get("name"));
+                    if (params.containsKey("courseName")) found.setCourseName(params.get("courseName"));
+                    if (params.containsKey("rawScore")) found.setRawScore(Double.valueOf(params.get("rawScore")));
+                    if (params.containsKey("credits")) found.setCredits(Integer.valueOf(params.get("credits")));
+
+                    Map<String, Object> resp = new HashMap<>();
+                    resp.put("success", true);
+                    resp.put("message", "Student record updated successfully!");
+                    sendJsonResponse(exchange, 200, toJson(resp));
+                } else {
+                    Map<String, Object> resp = new HashMap<>();
+                    resp.put("success", false);
+                    resp.put("message", "Student record not found!");
+                    sendJsonResponse(exchange, 404, toJson(resp));
+                }
+            } 
+            else if (method.equalsIgnoreCase("DELETE")) {
+                String query = exchange.getRequestURI().getQuery();
+                String id = getQueryParam(query, "id");
+                if (id == null) {
+                    String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+                    Map<String, String> params = parseFormOrJson(body);
+                    id = params.get("id");
+                }
+                
+                if (id != null) {
+                    final String targetId = id;
+                    boolean removed = records.removeIf(r -> r.getId().equals(targetId));
+                    Map<String, Object> resp = new HashMap<>();
+                    resp.put("success", removed);
+                    resp.put("message", removed ? "Student record deleted successfully!" : "Student record not found!");
+                    sendJsonResponse(exchange, removed ? 200 : 404, toJson(resp));
+                } else {
+                    sendResponse(exchange, 400, "Missing student id parameter");
+                }
             } else {
                 sendResponse(exchange, 405, "Method Not Allowed");
             }
@@ -382,6 +441,17 @@ public class StudentGradingApp {
     // ---------------------------------------------------------
     // UTILITY METHODS
     // ---------------------------------------------------------
+
+    private static String getQueryParam(String query, String paramName) {
+        if (query == null || query.isEmpty()) return null;
+        for (String pair : query.split("&")) {
+            String[] kv = pair.split("=");
+            if (kv.length == 2 && kv[0].equalsIgnoreCase(paramName)) {
+                return java.net.URLDecoder.decode(kv[1], StandardCharsets.UTF_8);
+            }
+        }
+        return null;
+    }
 
     private static void sendResponse(HttpExchange exchange, int statusCode, String responseText) throws IOException {
         byte[] bytes = responseText.getBytes(StandardCharsets.UTF_8);
@@ -623,6 +693,23 @@ public class StudentGradingApp {
                 }
                 .annotation-card h4 { color: var(--accent-blue); margin-bottom: 0.3rem; }
                 .annotation-card code { color: #f472b6; font-family: monospace; font-size: 0.9rem; }
+
+                .btn-sm { padding: 0.35rem 0.65rem; font-size: 0.8rem; border-radius: 6px; border: none; cursor: pointer; font-weight: 600; margin-right: 0.25rem; }
+                .btn-edit { background: rgba(59, 130, 246, 0.2); color: #3b82f6; border: 1px solid #3b82f6; }
+                .btn-edit:hover { background: #3b82f6; color: white; }
+                .btn-danger { background: rgba(239, 68, 68, 0.2); color: #ef4444; border: 1px solid #ef4444; }
+                .btn-danger:hover { background: #ef4444; color: white; }
+
+                .modal-overlay {
+                    display: none; position: fixed; top:0; left:0; width:100%; height:100%;
+                    background: rgba(0,0,0,0.7); backdrop-filter: blur(4px);
+                    justify-content: center; align-items: center; z-index: 1000;
+                }
+                .modal-content {
+                    background: var(--card-bg); border: 1px solid var(--border-color);
+                    border-radius: 16px; padding: 1.5rem; width: 90%; max-width: 450px;
+                    box-shadow: 0 20px 25px -5px rgba(0,0,0,0.5);
+                }
             </style>
         </head>
         <body>
@@ -699,6 +786,7 @@ public class StudentGradingApp {
                                         <th>Score</th>
                                         <th>Grade Enum</th>
                                         <th>Grade Point</th>
+                                        <th>Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody id="studentTableBody">
@@ -721,10 +809,43 @@ public class StudentGradingApp {
                 </div>
             </div>
 
+            <!-- Edit Modal -->
+            <div id="editModal" class="modal-overlay">
+                <div class="modal-content">
+                    <div class="card-title">✏️ Edit Student Grade</div>
+                    <form id="editForm">
+                        <input type="hidden" id="editStuId">
+                        <div class="form-group">
+                            <label>Student Name</label>
+                            <input type="text" id="editStuName" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Course Name</label>
+                            <input type="text" id="editCourseName" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Raw Score (0 - 100)</label>
+                            <input type="number" step="0.1" id="editRawScore" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Credits</label>
+                            <input type="number" id="editCredits" min="1" max="6" required>
+                        </div>
+                        <div style="display:flex; gap:0.5rem;">
+                            <button type="submit" class="btn">Update Student</button>
+                            <button type="button" class="btn" style="background:#475569;" onclick="closeEditModal()">Cancel</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
             <script>
+                let cachedStudents = [];
+
                 async function loadGrades() {
                     const res = await fetch('/api/students');
                     const data = await res.json();
+                    cachedStudents = data.students || [];
                     
                     // Render Summary
                     document.getElementById('summaryGpa').textContent = data.summary.gpa.toFixed(2);
@@ -736,7 +857,7 @@ public class StudentGradingApp {
 
                     // Render Table
                     const tbody = document.getElementById('studentTableBody');
-                    tbody.innerHTML = data.students.map(s => `
+                    tbody.innerHTML = cachedStudents.map(s => `
                         <tr>
                             <td>
                                 <strong>${s.name}</strong><br>
@@ -751,6 +872,10 @@ public class StudentGradingApp {
                                 <div style="font-size:0.75rem; color:var(--text-muted);">${s.description}</div>
                             </td>
                             <td><strong>${s.gradePoint.toFixed(1)}</strong></td>
+                            <td>
+                                <button class="btn-sm btn-edit" onclick="openEditModal('${s.id}')">Edit</button>
+                                <button class="btn-sm btn-danger" onclick="deleteStudent('${s.id}')">Delete</button>
+                            </td>
                         </tr>
                     `).join('');
                 }
@@ -787,6 +912,49 @@ public class StudentGradingApp {
                     document.getElementById('gradeForm').reset();
                     loadGrades();
                 });
+
+                function openEditModal(id) {
+                    const s = cachedStudents.find(stu => stu.id === id);
+                    if (!s) return;
+                    document.getElementById('editStuId').value = s.id;
+                    document.getElementById('editStuName').value = s.name;
+                    document.getElementById('editCourseName').value = s.courseName;
+                    document.getElementById('editRawScore').value = s.rawScore;
+                    document.getElementById('editCredits').value = s.credits;
+                    document.getElementById('editModal').style.display = 'flex';
+                }
+
+                function closeEditModal() {
+                    document.getElementById('editModal').style.display = 'none';
+                }
+
+                document.getElementById('editForm').addEventListener('submit', async (e) => {
+                    e.preventDefault();
+                    const payload = {
+                        id: document.getElementById('editStuId').value,
+                        name: document.getElementById('editStuName').value,
+                        courseName: document.getElementById('editCourseName').value,
+                        rawScore: document.getElementById('editRawScore').value,
+                        credits: document.getElementById('editCredits').value
+                    };
+
+                    await fetch('/api/students', {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+
+                    closeEditModal();
+                    loadGrades();
+                });
+
+                async function deleteStudent(id) {
+                    if (!confirm('Are you sure you want to delete student record ' + id + '?')) return;
+                    await fetch('/api/students?id=' + encodeURIComponent(id), {
+                        method: 'DELETE'
+                    });
+                    loadGrades();
+                }
 
                 function switchTab(tabId, btn) {
                     document.querySelectorAll('.tab-nav button').forEach(b => b.classList.remove('active'));
